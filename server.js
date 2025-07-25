@@ -35,11 +35,6 @@ const connectDB = async () => {
   }
 };
 
-// Replace this line:
-// Connect to database
-connectDB();
-
-// With this code:
 // Database connection with reconnection logic for serverless environment
 let isConnected = false;
 
@@ -73,7 +68,14 @@ app.use('/api/documents', require('./routes/documents'));
 
 // Basic route for testing
 app.get('/', (req, res) => {
-  res.send('API is running...');
+  res.json({
+    status: 'ok',
+    message: 'API is running',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    version: require('./package.json').version
+  });
 });
 
 // Health check endpoint
