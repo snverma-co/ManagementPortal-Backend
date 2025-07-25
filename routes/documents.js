@@ -72,7 +72,7 @@ router.get('/:id', protect, async (req, res) => {
   }
 });
 
-// @route   POST /api/documents
+// @route   POST /api/documents-
 // @desc    Upload a document
 // @access  Private
 router.post('/', protect, upload.single('file'), async (req, res) => {
@@ -99,18 +99,12 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
       client = req.user;
     }
     
-    // For memory storage, we don't have a file path
-    // Instead, we need to create a virtual path or identifier
-    const fileName = `${Date.now()}-${req.file.originalname}`;
-    const fileType = path.extname(req.file.originalname).substring(1);
-    const virtualPath = `uploads/${fileName}`;
-    
-    // Create document record with virtual path
+    // Create document record
     const document = await Document.create({
       name: name || req.file.originalname,
       description,
-      fileUrl: virtualPath, // Store a virtual path instead of actual file path
-      fileType: fileType,
+      fileUrl: req.file.path,
+      fileType: path.extname(req.file.originalname).substring(1),
       client: client._id,
       uploadedBy: req.user._id,
       task: taskId || null
@@ -124,7 +118,6 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
     
     res.status(201).json(document);
   } catch (error) {
-    console.error('Document upload error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -145,14 +138,26 @@ router.get('/download/:id', protect, async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to download this document' });
     }
     
-    // In serverless environment, we can't access the file system
-    // Return a message for now
-    res.status(200).json({ 
-      message: 'Document download is not available in the serverless environment',
-      document: document
-    });
+    const filePath = path.join(__dirname, '..', document.fileUrl);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    
+    // Get the original file extension
+    const fileExtension = path.extname(document.fileUrl);
+    const fileName = `${document.name}${fileExtension}`;
+    
+    // Set Content-Type based on file extension
+    const mimeType = getMimeType(fileExtension);
+    if (mimeType) {
+      res.setHeader('Content-Type', mimeType);
+    }
+    
+    // Set Content-Disposition header with the original filename
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.download(filePath, fileName);
   } catch (error) {
-    console.error('Document download error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -192,13 +197,17 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to delete this document' });
     }
     
-    // In serverless environment, we can't access the file system
-    // Just delete the document record
+    // Delete file from filesystem
+    const filePath = path.join(__dirname, '..', document.fileUrl);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    
+    // Delete document record - updated to use deleteOne instead of remove
     await Document.deleteOne({ _id: document._id });
     
-    res.json({ message: 'Document record removed (file remains in storage)' });
+    res.json({ message: 'Document removed' });
   } catch (error) {
-    console.error('Document delete error:', error);
     res.status(500).json({ message: error.message });
   }
 });
