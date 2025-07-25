@@ -19,19 +19,21 @@ app.use(express.urlencoded({ extended: true }));
 // Connect to MongoDB with improved connection options for serverless environment
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      // These options help with serverless environments
-      bufferCommands: false, // Disable mongoose buffering
-      autoCreate: false,     // Don't auto-create collections
-      maxPoolSize: 10,       // Limit connection pool size
-    });
-    console.log('MongoDB connected');
+    if (mongoose.connection.readyState !== 1) {
+      await mongoose.connect(process.env.MONGO_URI, {
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+        // These options help with serverless environments
+        bufferCommands: false, // Disable mongoose buffering
+        autoCreate: false,     // Don't auto-create collections
+        maxPoolSize: 10,       // Limit connection pool size
+      });
+      console.log('MongoDB connected');
+    }
+    return mongoose.connection;
   } catch (err) {
     console.error('MongoDB connection error:', err);
-    // Don't exit the process in serverless environment
-    // Instead, we'll handle the error in the request handlers
+    throw err; // Rethrow to be handled by the middleware
   }
 };
 
@@ -39,12 +41,12 @@ const connectDB = async () => {
 let isConnected = false;
 
 const connectToDatabase = async (req, res, next) => {
-  // Skip if already connected
-  if (isConnected) {
-    return next();
-  }
-  
   try {
+    // Skip if already connected
+    if (isConnected) {
+      return next();
+    }
+    
     // Only attempt to connect if not already connected
     if (mongoose.connection.readyState !== 1) {
       await connectDB();
@@ -53,7 +55,10 @@ const connectToDatabase = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Failed to connect to database on request:', error);
-    return res.status(500).json({ error: 'Database connection failed' });
+    return res.status(500).json({ 
+      error: 'Database connection failed', 
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+    });
   }
 };
 
