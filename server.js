@@ -35,8 +35,35 @@ const connectDB = async () => {
   }
 };
 
+// Replace this line:
 // Connect to database
 connectDB();
+
+// With this code:
+// Database connection with reconnection logic for serverless environment
+let isConnected = false;
+
+const connectToDatabase = async (req, res, next) => {
+  // Skip if already connected
+  if (isConnected) {
+    return next();
+  }
+  
+  try {
+    // Only attempt to connect if not already connected
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+      isConnected = true;
+    }
+    next();
+  } catch (error) {
+    console.error('Failed to connect to database on request:', error);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
+};
+
+// Apply the database connection middleware to all routes
+app.use(connectToDatabase);
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -47,6 +74,16 @@ app.use('/api/documents', require('./routes/documents'));
 // Basic route for testing
 app.get('/', (req, res) => {
   res.send('API is running...');
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    dbStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Enhanced error handling middleware for serverless environment
