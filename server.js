@@ -16,22 +16,46 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connect to MongoDB with improved connection options
+// Connect to MongoDB with improved connection options for serverless
+let cachedDb = null;
+
 const connectDB = async () => {
+  if (cachedDb) {
+    console.log('Using cached database connection');
+    return cachedDb;
+  }
+  
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      // These options help with serverless environments
+      bufferCommands: false,
+      bufferMaxEntries: 0,
+      useNewUrlParser: true,
+      useUnifiedTopology: true
     });
+    
+    cachedDb = conn;
     console.log('MongoDB connected');
+    return cachedDb;
   } catch (err) {
     console.error('MongoDB connection error:', err);
     // Don't exit the process in serverless environment
+    throw err; // Rethrow to handle in route handlers
   }
 };
 
-// Connect to database
-connectDB();
+// Connect to database before handling requests
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error('Database connection error in middleware:', error);
+    res.status(500).json({ message: 'Database connection failed' });
+  }
+});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
