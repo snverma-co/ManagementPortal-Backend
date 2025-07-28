@@ -77,10 +77,6 @@ router.get('/:id', protect, async (req, res) => {
 // @route   POST /api/documents-
 // @desc    Upload a document
 // @access  Private
-// Add these imports at the top
-const cloudinary = require('cloudinary').v2;
-const streamifier = require('streamifier');
-
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -88,7 +84,6 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Update your POST route
 router.post('/', protect, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
