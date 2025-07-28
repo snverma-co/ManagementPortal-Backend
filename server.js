@@ -46,21 +46,20 @@ connectDB();
 let isConnected = false;
 
 const connectToDatabase = async (req, res, next) => {
-  // Skip if already connected
-  if (isConnected) {
-    return next();
-  }
-  
   try {
-    // Only attempt to connect if not already connected
+    // Check connection state more reliably
     if (mongoose.connection.readyState !== 1) {
       await connectDB();
       isConnected = true;
+      console.log('Database connected successfully');
     }
     next();
   } catch (error) {
     console.error('Failed to connect to database on request:', error);
-    return res.status(500).json({ error: 'Database connection failed' });
+    return res.status(500).json({ 
+      error: 'Database connection failed', 
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+    });
   }
 };
 

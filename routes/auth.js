@@ -74,7 +74,11 @@ router.post('/login', async (req, res) => {
       token: generateToken(user._id)
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      message: 'Authentication failed', 
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Server error' 
+    });
   }
 });
 
