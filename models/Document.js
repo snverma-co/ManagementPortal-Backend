@@ -8,11 +8,15 @@ const DocumentSchema = new mongoose.Schema({
   description: {
     type: String
   },
-  fileUrl: {
-    type: String,
+  fileData: {
+    type: Buffer,
     required: true
   },
   fileType: {
+    type: String,
+    required: true
+  },
+  mimeType: {
     type: String,
     required: true
   },
