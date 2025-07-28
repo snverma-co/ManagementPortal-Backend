@@ -7,6 +7,8 @@ const upload = require('../middleware/upload');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const cloudinary = require('cloudinary').v2;
+const streamifier = require('streamifier');
 
 // WhatsApp notification function using Beta Blaster API
 const sendWhatsAppNotification = async (phone, message) => {
@@ -75,6 +77,18 @@ router.get('/:id', protect, async (req, res) => {
 // @route   POST /api/documents-
 // @desc    Upload a document
 // @access  Private
+// Add these imports at the top
+const cloudinary = require('cloudinary').v2;
+const streamifier = require('streamifier');
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Update your POST route
 router.post('/', protect, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -99,24 +113,70 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
       client = req.user;
     }
     
-    // Create document record
-    const document = await Document.create({
-      name: name || req.file.originalname,
-      description,
-      fileUrl: req.file.path,
-      fileType: path.extname(req.file.originalname).substring(1),
-      client: client._id,
-      uploadedBy: req.user._id,
-      task: taskId || null
+    // Upload to Cloudinary
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'portal_documents',
+          resource_type: 'auto'
+        },
+        async (error, result) => {
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            return res.status(500).json({ message: 'Error uploading file' });
+          }
+          
+          try {
+            // Create document record with Cloudinary URL
+            const document = await Document.create({
+              name: name || req.file.originalname,
+              description,
+              fileUrl: result.secure_url, // Use Cloudinary URL
+              fileType: path.extname(req.file.originalname).substring(1),
+              client: client._id,
+              uploadedBy: req.user._id,
+              task: taskId || null
+            });
+            
+            // If admin uploaded a document for a client, send notification
+            if (req.user.role === 'admin' && client._id.toString() !== req.user._id.toString()) {
+              const notificationMessage = `New document uploaded: ${document.name}`;
+              await sendWhatsAppNotification(client.phone, notificationMessage);
+            }
+            
+            res.status(201).json(document);
+          } catch (err) {
+            console.error('Database error:', err);
+            res.status(500).json({ message: err.message });
+          }
+        }
+      );
+      
+      // Convert buffer to stream and pipe to Cloudinary
+      streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
     });
+  } catch (error) {
+    console.error('Upload route error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update your download route to use Cloudinary URL
+router.get('/download/:id', protect, async (req, res) => {
+  try {
+    const document = await Document.findById(req.params.id);
     
-    // If admin uploaded a document for a client, send notification
-    if (req.user.role === 'admin' && client._id.toString() !== req.user._id.toString()) {
-      const notificationMessage = `New document uploaded: ${document.name}`;
-      await sendWhatsAppNotification(client.phone, notificationMessage);
+    if (!document) {
+      return res.status(404).json({ message: 'Document not found' });
     }
     
-    res.status(201).json(document);
+    // Check if user is authorized to download this document
+    if (req.user.role !== 'admin' && document.client.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to download this document' });
+    }
+    
+    // Redirect to the Cloudinary URL
+    res.redirect(document.fileUrl);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

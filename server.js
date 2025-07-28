@@ -21,27 +21,19 @@ app.use(express.urlencoded({ extended: true }));
 // Connect to MongoDB with improved connection options for serverless environment
 const connectDB = async () => {
   try {
-    if (mongoose.connection.readyState === 1) {
-      console.log('MongoDB already connected');
-      return mongoose.connection;
-    }
-    
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 5000, // Reduce from default 30s to fail faster
-      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-      bufferCommands: false, // Disable buffering of commands
-      autoCreate: false, // Don't create collections automatically
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      retryWrites: true,
-      w: 'majority'
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      // These options help with serverless environments
+      bufferCommands: false, // Disable mongoose buffering
+      autoCreate: false,     // Don't auto-create collections
+      maxPoolSize: 10,       // Limit connection pool size
     });
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    return conn.connection;
-  } catch (error) {
-    console.error(`Error: ${error.message}`);
-    // Don't crash the server on connection error, just log it
-    return null;
+    console.log('MongoDB connected');
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    // Don't exit the process in serverless environment
+    // Instead, we'll handle the error in the request handlers
   }
 };
 

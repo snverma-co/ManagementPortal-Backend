@@ -1,6 +1,6 @@
 const multer = require('multer');
 
-// Use memory storage instead of disk storage for serverless environment
+// Use memory storage for serverless environment
 const storage = multer.memoryStorage();
 
 const upload = multer({
