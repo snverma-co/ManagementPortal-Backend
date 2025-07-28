@@ -77,6 +77,7 @@ router.get('/:id', protect, async (req, res) => {
 // @route   POST /api/documents-
 // @desc    Upload a document
 // @access  Private
+
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -170,6 +171,13 @@ router.get('/download/:id', protect, async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to download this document' });
     }
     
+    // Get the original file name and extension
+    const fileName = document.name;
+    const fileType = document.fileType;
+    
+    // Set Content-Disposition header with the original filename
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}.${fileType}"`);
+    
     // Redirect to the Cloudinary URL
     res.redirect(document.fileUrl);
   } catch (error) {
@@ -252,13 +260,21 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to delete this document' });
     }
     
-    // Delete file from filesystem
-    const filePath = path.join(__dirname, '..', document.fileUrl);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    // Extract public_id from Cloudinary URL
+    // Cloudinary URLs typically look like: https://res.cloudinary.com/cloud_name/resource_type/upload/v123456789/public_id.ext
+    const urlParts = document.fileUrl.split('/');
+    const publicIdWithExtension = urlParts[urlParts.length - 1];
+    const publicId = `portal_documents/${publicIdWithExtension.split('.')[0]}`;
     
-    // Delete document record - updated to use deleteOne instead of remove
+    // Delete file from Cloudinary
+    cloudinary.uploader.destroy(publicId, (error, result) => {
+      if (error) {
+        console.error('Error deleting from Cloudinary:', error);
+      }
+      console.log('Cloudinary deletion result:', result);
+    });
+    
+    // Delete document record
     await Document.deleteOne({ _id: document._id });
     
     res.json({ message: 'Document removed' });
